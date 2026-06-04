@@ -1,0 +1,15 @@
+command:
+  - "uvicorn"
+  - "app:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+resources:
+  apps:
+    mcp-server-ai-dev-kit:
+      name: mcp-server-ai-dev-kit
+      environment:
+        variables:
+          APP_NAME: "mcp-server-ai-dev-kit"
+          MAX_UPTIME_MIN: "1"

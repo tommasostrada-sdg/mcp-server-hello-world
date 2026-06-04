@@ -1,0 +1,13 @@
+bundle:
+  name: mcp-server-ai-dev-kit
+
+resources:
+  apps:
+    mcp_ai_dev_kit:
+      name: "mcp-server-ai-dev-kit"
+      description: "A basic MCP server for ai integration based on ai-dev-kit"
+      source_code_path: .
+
+targets:
+  dev:
+    default: true
