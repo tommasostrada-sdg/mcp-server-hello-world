@@ -106,23 +106,39 @@ threading.Thread(
 
 
 # ─── MCP server ───────────────────────────────────────────────────────────────
+from contextlib import asynccontextmanager          # noqa: E402
+from starlette.routing import Mount                 # noqa: E402
 from databricks_mcp_server.server import mcp as _mcp_server  # noqa: E402
 
 _mcp_asgi = _mcp_server.http_app(path="/mcp", stateless_http=True)
 
 
-# ─── FastAPI app (UI + REST endpoints) ───────────────────────────────────────
-_api = FastAPI(title="MCP Server UI", lifespan=_mcp_asgi.lifespan)
+# ─── FastAPI app (UI + REST endpoints) ────────────────────────────────────────
+# Lifespan wraps the MCP app's own lifespan so its startup/shutdown hooks run.
+@asynccontextmanager
+async def _lifespan(app_: FastAPI):
+    async with _mcp_asgi.router.lifespan_context(app_):
+        yield
 
 
-@_api.get("/", include_in_schema=False)
+app = FastAPI(title="MCP Server + UI", lifespan=_lifespan)
+
+
+@app.middleware("http")
+async def _activity_middleware(request: Request, call_next):
+    refresh_activity()
+    return await call_next(request)
+
+
+# ── UI / REST routes ──────────────────────────────────────────────────────────
+@app.get("/", include_in_schema=False)
 async def serve_index():
     if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
         return FileResponse(STATIC_DIR / "index.html")
     return {"message": "MCP Server is running", "status": "healthy"}
 
 
-@_api.get("/api/status")
+@app.get("/api/status")
 async def api_status():
     """Return remaining seconds and current max-uptime setting."""
     refresh_activity()
@@ -136,7 +152,7 @@ class UptimePayload(BaseModel):
     minutes: int
 
 
-@_api.post("/api/set-uptime")
+@app.post("/api/set-uptime")
 async def api_set_uptime(payload: UptimePayload):
     """Update MAX_UPTIME_MIN in memory and persist to app.yaml."""
     global MAX_UPTIME_SECONDS
@@ -144,7 +160,6 @@ async def api_set_uptime(payload: UptimePayload):
     MAX_UPTIME_SECONDS = minutes * 60
     refresh_activity()
 
-    # Persist to app.yaml (best-effort)
     try:
         if APP_YAML.exists():
             content = APP_YAML.read_text()
@@ -166,18 +181,7 @@ async def api_set_uptime(payload: UptimePayload):
     return JSONResponse({"ok": True, "max_uptime_min": minutes})
 
 
-# ─── Combined ASGI app (MCP + FastAPI) ────────────────────────────────────────
-app = FastAPI(
-    title="MCP + UI",
-    routes=[
-        *_mcp_asgi.routes,
-        *_api.routes,
-    ],
-    lifespan=_mcp_asgi.lifespan,
-)
-
-
-@app.middleware("http")
-async def _activity_middleware(request: Request, call_next):
-    refresh_activity()
-    return await call_next(request)
+# ── Mount MCP at /mcp ─────────────────────────────────────────────────────────
+# Use Starlette Mount so the sub-app's routes are never merged into the
+# FastAPI router (which caused the on_startup kwarg crash).
+app.mount("/mcp", _mcp_asgi)
