@@ -12,4 +12,4 @@ resources:
       environment:
         variables:
           APP_NAME: "mcp-server-ai-dev-kit"
-          MAX_UPTIME_MIN: "1"
+          MAX_UPTIME_MIN: "45"
