@@ -2,100 +2,148 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Custom MCP Server on Databricks Apps</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Highlight.js CSS and JS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            hljs.highlightAll();
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom MCP Server on Databricks Apps</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
 
-            const fullHost = `https://${window.location.hostname}/mcp`;
-            // Update all elements with class "app-host"
-            document.querySelectorAll('.app-host').forEach(el => {
-                el.textContent = fullHost;
-            });
+  <style>
+    /* ── Countdown ring ─────────────────────────────────────── */
+    .ring-bg   { stroke: #1e2a3a; }
+    .ring-fill { stroke: #3b82f6; stroke-linecap: round;
+                 transition: stroke-dashoffset 1s linear, stroke 0.4s; }
+    .ring-fill.warning  { stroke: #f59e0b; }
+    .ring-fill.critical { stroke: #ef4444; }
 
-            const pyCode = document.querySelector('pre code.language-python');
-            if (pyCode) {
-                pyCode.innerHTML = pyCode.innerHTML.replace('databricks-app-url', fullHost);
-            }
-        });
-    </script>
+    /* ── Pulse dot ──────────────────────────────────────────── */
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: .5; transform: scale(.7); }
+    }
+    .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+    /* ── Spin loader ────────────────────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin .8s linear infinite; }
+
+    /* ── Slide-down notice ──────────────────────────────────── */
+    @keyframes slide-down { from { opacity:0; transform:translateY(-8px); }
+                             to   { opacity:1; transform:translateY(0);    } }
+    .slide-down { animation: slide-down .3s ease; }
+  </style>
 </head>
 
 <body class="bg-gray-900 text-gray-100 font-sans">
 
-    <!-- Hero Section -->
-    <div class="py-12 sm:py-16 h-screen flex items-center justify-center">
-        <div class="max-w-3xl mx-auto px-4 text-center">
-            <!-- Logos Placeholder -->
-            <div class="flex justify-center items-center gap-8 mb-8">
-                <!-- Databricks Logo -->
-                <div class="w-24 h-24 rounded-full flex items-center justify-center">
-                    <img src="https://cdn.bfldr.com/9AYANS2F/at/k8bgnnxhb4bggjk88r4x9snf/databricks-symbol-color.svg?auto=webp&format=png"
-                        alt="Databricks Logo" class="w-20 h-20">
-                </div>
-                <!-- MCP Logo -->
-                <div class="w-24 h-24 rounded-full flex items-center justify-center">
-                    <img src="https://avatars.githubusercontent.com/u/182288589?s=200&v=4" alt="MCP Logo"
-                        class="w-20 h-20 rounded-full">
-                </div>
+  <!-- ═══════════════════════════════════════════════════════════
+       COUNTDOWN WIDGET  (fixed top-right corner)
+       ═════════════════════════════════════════════════════════ -->
+  <div id="countdown-widget"
+       class="fixed top-4 right-4 z-50 bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-4
+              flex flex-col items-center gap-3 w-52 select-none">
 
-            </div>
-            <h1 class="text-4xl font-bold text-white sm:text-5xl text-balance">
-                Custom Model Context Protocol Server on Databricks Apps
-            </h1>
-            <p class="mt-6 text-xl text-gray-300">
-                Your custom MCP server is up and running on Databricks Apps.
-            </p>
-            <div class="mt-10">
-                <a href="#connect"
-                    class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                    Get Started
-                </a>
-            </div>
-        </div>
+    <!-- Ring + time display -->
+    <div class="relative w-28 h-28">
+      <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
+        <circle class="ring-bg"   cx="50" cy="50" r="42" fill="none" stroke-width="8"/>
+        <circle id="ring-fill" class="ring-fill" cx="50" cy="50" r="42" fill="none"
+                stroke-width="8" stroke-dasharray="264" stroke-dashoffset="0"/>
+      </svg>
+      <div class="absolute inset-0 flex flex-col items-center justify-center">
+        <span id="countdown-label" class="text-2xl font-mono font-bold text-white leading-none">--:--</span>
+        <span class="text-xs text-gray-400 mt-1">remaining</span>
+      </div>
     </div>
 
-    <!-- Connection Section -->
-    <div id="connect" class="py-12">
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 class="text-2xl font-bold text-center text-white">Connect to the Server</h2>
-            <div class="mt-10 bg-gray-800 shadow overflow-hidden sm:rounded-lg">
-                <div class="px-4 py-5 sm:px-6">
-                    <h3 class="text-lg leading-6 font-medium text-white">Connection Details</h3>
-                </div>
-                <div class="border-t border-gray-700 px-4 py-5 sm:p-6">
-                    <dl class="grid grid-cols-1 gap-x-4 gap-y-8">
-                        <div class="sm:col-span-1">
-                            <dt class="text-sm font-medium text-gray-400">
-                                Server URL
-                            </dt>
-                            <dd class="mt-1 text-sm text-gray-100">
-                                <code class="bg-gray-900 px-2 py-1 rounded app-host">https://your.app.url.databricksapps.com</code>
-                            </dd>
-                        </div>
-                        <div class="sm:col-span-2">
-                            <dt class="text-sm font-medium text-gray-400">
-                                Transport <Table></Table>
-                            </dt>
-                            <dd class="mt-1 text-sm text-gray-100">
-                                <code class="bg-gray-900 px-2 py-1 rounded">
-                                    Streamable HTTP
-                                </code>
-                            </dd>
-                        </div>
-                        <div class="sm:col-span-3">
-                            <dt class="text-sm font-medium text-gray-400">
-                                Example Connection (Python)
-                            </dt>
-                            <dd class="mt-1 text-sm text-gray-100">
-                                <pre class="bg-gray-900 p-3 rounded overflow-x-auto">
+    <!-- Status row -->
+    <div class="flex items-center gap-2 text-xs text-gray-400">
+      <span id="pulse-dot" class="pulse-dot w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+      <span id="status-text">Running</span>
+    </div>
+
+    <!-- ── Set timeout section ── -->
+    <div class="w-full border-t border-gray-700 pt-3">
+      <label class="block text-xs text-gray-400 mb-1 text-center">Set timeout (min)</label>
+      <div class="flex gap-2">
+        <input id="uptime-input" type="number" min="0" max="1440" placeholder="e.g. 30"
+               class="w-full bg-gray-900 border border-gray-600 rounded-lg px-2 py-1.5
+                      text-sm text-white text-center focus:outline-none focus:border-blue-500
+                      [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
+                      [&::-webkit-inner-spin-button]:appearance-none"/>
+        <button id="set-uptime-btn"
+                class="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs
+                       font-medium px-3 py-1.5 rounded-lg transition-colors flex-shrink-0">
+          Set
+        </button>
+      </div>
+      <p id="set-notice" class="text-xs text-center mt-1.5 min-h-[1rem]"></p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       HERO SECTION
+       ═════════════════════════════════════════════════════════ -->
+  <div class="py-12 sm:py-16 h-screen flex items-center justify-center">
+    <div class="max-w-3xl mx-auto px-4 text-center">
+      <div class="flex justify-center items-center gap-8 mb-8">
+        <div class="w-24 h-24 rounded-full flex items-center justify-center">
+          <img src="https://cdn.bfldr.com/9AYANS2F/at/k8bgnnxhb4bggjk88r4x9snf/databricks-symbol-color.svg?auto=webp&format=png"
+               alt="Databricks Logo" class="w-20 h-20">
+        </div>
+        <div class="w-24 h-24 rounded-full flex items-center justify-center">
+          <img src="https://avatars.githubusercontent.com/u/182288589?s=200&v=4"
+               alt="MCP Logo" class="w-20 h-20 rounded-full">
+        </div>
+      </div>
+      <h1 class="text-4xl font-bold text-white sm:text-5xl text-balance">
+        Custom Model Context Protocol Server on Databricks Apps
+      </h1>
+      <p class="mt-6 text-xl text-gray-300">
+        Your custom MCP server is up and running on Databricks Apps.
+      </p>
+      <div class="mt-10">
+        <a href="#connect"
+           class="inline-flex items-center px-6 py-3 border border-transparent text-base
+                  font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+          Get Started
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CONNECTION SECTION
+       ═════════════════════════════════════════════════════════ -->
+  <div id="connect" class="py-12">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-2xl font-bold text-center text-white">Connect to the Server</h2>
+      <div class="mt-10 bg-gray-800 shadow overflow-hidden sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6">
+          <h3 class="text-lg leading-6 font-medium text-white">Connection Details</h3>
+        </div>
+        <div class="border-t border-gray-700 px-4 py-5 sm:p-6">
+          <dl class="grid grid-cols-1 gap-x-4 gap-y-8">
+            <div class="sm:col-span-1">
+              <dt class="text-sm font-medium text-gray-400">Server URL</dt>
+              <dd class="mt-1 text-sm text-gray-100">
+                <code class="bg-gray-900 px-2 py-1 rounded app-host">
+                  https://your.app.url.databricksapps.com
+                </code>
+              </dd>
+            </div>
+            <div class="sm:col-span-2">
+              <dt class="text-sm font-medium text-gray-400">Transport</dt>
+              <dd class="mt-1 text-sm text-gray-100">
+                <code class="bg-gray-900 px-2 py-1 rounded">Streamable HTTP</code>
+              </dd>
+            </div>
+            <div class="sm:col-span-3">
+              <dt class="text-sm font-medium text-gray-400">Example Connection (Python)</dt>
+              <dd class="mt-1 text-sm text-gray-100">
+                <pre class="bg-gray-900 p-3 rounded overflow-x-auto">
 <code class="language-python">
 from databricks.sdk import WorkspaceClient
 from databricks_mcp import DatabricksMCPClient
@@ -106,7 +154,7 @@ ws_client = WorkspaceClient(
     token="exactly-scoped-OAuth-token",
 )
 
-# Initialize the MCP client with your app’s MCP endpoint
+# Initialize the MCP client with your app's MCP endpoint
 mcp_client = DatabricksMCPClient(
     server_url='databricks-app-url',
     workspace_client=ws_client,
@@ -115,38 +163,197 @@ mcp_client = DatabricksMCPClient(
 # List available MCP tools
 print(mcp_client.list_tools())
 </code>
-                                </pre>
-                            </dd>
-                        </div>
-                        <div class="sm:col-span-2">
-                            <dt class="text-sm font-medium text-gray-400">
-                                Or use your favourite tool
-                            </dt>
-                            <dd class="mt-1 text-sm text-gray-100">
-                                You can also connect using tools like <strong>Claude</strong>, <strong>MCP
-                                    Inspector</strong>, or any other compatible client.
-                            </dd>
-                        </div>
-                    </dl>
-                </div>
+                </pre>
+              </dd>
             </div>
+            <div class="sm:col-span-2">
+              <dt class="text-sm font-medium text-gray-400">Or use your favourite tool</dt>
+              <dd class="mt-1 text-sm text-gray-100">
+                You can also connect using tools like <strong>Claude</strong>,
+                <strong>MCP Inspector</strong>, or any other compatible client.
+              </dd>
+            </div>
+          </dl>
         </div>
+      </div>
     </div>
+  </div>
 
-    <div class="py-12 bg-gray-800">
-        <div class="max-w-3xl mx-auto px-4 text-center">
-            <h2 class="text-2xl font-bold text-white mb-4">Documentation</h2>
-            <p class="text-lg text-gray-300 mb-6">
-                Learn more about MCP on Databricks Apps and how to deploy your own server.
-            </p>
-            <a href="https://docs.databricks.com/aws/en/generative-ai/mcp/custom-mcp" target="_blank" rel="noopener"
-                class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                Custom MCP servers on Databricks Apps
-            </a>
-        </div>
+  <!-- ═══════════════════════════════════════════════════════════
+       DOCS SECTION
+       ═════════════════════════════════════════════════════════ -->
+  <div class="py-12 bg-gray-800">
+    <div class="max-w-3xl mx-auto px-4 text-center">
+      <h2 class="text-2xl font-bold text-white mb-4">Documentation</h2>
+      <p class="text-lg text-gray-300 mb-6">
+        Learn more about MCP on Databricks Apps and how to deploy your own server.
+      </p>
+      <a href="https://docs.databricks.com/aws/en/generative-ai/mcp/custom-mcp"
+         target="_blank" rel="noopener"
+         class="inline-flex items-center px-6 py-3 border border-transparent text-base
+                font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+        Custom MCP servers on Databricks Apps
+      </a>
     </div>
+  </div>
 
+  <!-- ═══════════════════════════════════════════════════════════
+       JAVASCRIPT – Countdown logic
+       ═════════════════════════════════════════════════════════ -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      hljs.highlightAll();
+
+      const fullHost = `https://${window.location.hostname}/mcp`;
+      document.querySelectorAll('.app-host').forEach(el => el.textContent = fullHost);
+      const pyCode = document.querySelector('pre code.language-python');
+      if (pyCode) pyCode.innerHTML = pyCode.innerHTML.replace('databricks-app-url', fullHost);
+    });
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    const label      = document.getElementById('countdown-label');
+    const ring       = document.getElementById('ring-fill');
+    const statusText = document.getElementById('status-text');
+    const pulseDot   = document.getElementById('pulse-dot');
+    const uptimeInput = document.getElementById('uptime-input');
+    const setBtn     = document.getElementById('set-uptime-btn');
+    const setNotice  = document.getElementById('set-notice');
+
+    const CIRCUMFERENCE = 2 * Math.PI * 42; // 263.9
+    ring.style.strokeDasharray = CIRCUMFERENCE;
+
+    let maxUptimeMin   = 0;   // pulled from /api/status
+    let remainingSec   = -1;  // -1 = no limit
+    let localRemaining = -1;  // client-side countdown (ticks every second)
+    let pollInterval   = null;
+    let tickInterval   = null;
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function fmtTime(secs) {
+      if (secs < 0) return '∞';
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function setRingProgress(fraction) {
+      // fraction 1 = full ring, 0 = empty
+      const offset = CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, fraction)));
+      ring.style.strokeDashoffset = offset;
+
+      ring.classList.remove('warning','critical');
+      if (fraction <= 0.1)      ring.classList.add('critical');
+      else if (fraction <= 0.25) ring.classList.add('warning');
+    }
+
+    function updateDisplay() {
+      if (localRemaining < 0) {
+        label.textContent = '∞';
+        setRingProgress(1);
+        statusText.textContent = 'No timeout set';
+        pulseDot.className = 'pulse-dot w-2 h-2 rounded-full bg-green-400 inline-block';
+        return;
+      }
+
+      const sec = Math.max(0, localRemaining);
+      label.textContent = fmtTime(sec);
+
+      const maxSec = maxUptimeMin * 60;
+      const fraction = maxSec > 0 ? sec / maxSec : 1;
+      setRingProgress(fraction);
+
+      if (sec === 0) {
+        statusText.textContent = 'Shutting down…';
+        pulseDot.className = 'w-2 h-2 rounded-full bg-red-500 inline-block';
+      } else if (fraction <= 0.1) {
+        statusText.textContent = 'Shutting down soon';
+        pulseDot.className = 'pulse-dot w-2 h-2 rounded-full bg-red-400 inline-block';
+      } else if (fraction <= 0.25) {
+        statusText.textContent = 'Low time';
+        pulseDot.className = 'pulse-dot w-2 h-2 rounded-full bg-yellow-400 inline-block';
+      } else {
+        statusText.textContent = 'Running';
+        pulseDot.className = 'pulse-dot w-2 h-2 rounded-full bg-green-400 inline-block';
+      }
+    }
+
+    // ── Local tick (smooth 1-second countdown) ────────────────────────────────
+    function startTick() {
+      if (tickInterval) clearInterval(tickInterval);
+      tickInterval = setInterval(() => {
+        if (localRemaining > 0) {
+          localRemaining -= 1;
+          updateDisplay();
+        }
+      }, 1000);
+    }
+
+    // ── Poll server every 15 s to sync ───────────────────────────────────────
+    async function pollStatus() {
+      try {
+        const res  = await fetch('/api/status');
+        const data = await res.json();
+        remainingSec   = data.remaining_seconds;
+        maxUptimeMin   = data.max_uptime_min;
+        localRemaining = remainingSec;  // resync local clock to server value
+        uptimeInput.placeholder = maxUptimeMin > 0 ? `current: ${maxUptimeMin}` : 'e.g. 30';
+        updateDisplay();
+      } catch (e) {
+        console.warn('Could not fetch /api/status:', e);
+      }
+    }
+
+    // Start everything
+    pollStatus();
+    startTick();
+    pollInterval = setInterval(pollStatus, 15_000);
+
+    // ── Set uptime button ─────────────────────────────────────────────────────
+    async function setUptime() {
+      const val = parseInt(uptimeInput.value, 10);
+      if (isNaN(val) || val < 0) {
+        showNotice('Enter a valid number of minutes.', 'red');
+        return;
+      }
+
+      setBtn.disabled = true;
+      setBtn.innerHTML = '<svg class="spin w-3 h-3 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>';
+
+      try {
+        const res  = await fetch('/api/set-uptime', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ minutes: val }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          maxUptimeMin   = data.max_uptime_min;
+          localRemaining = maxUptimeMin * 60;
+          uptimeInput.value = '';
+          uptimeInput.placeholder = `current: ${maxUptimeMin}`;
+          updateDisplay();
+          showNotice(val === 0 ? 'Timeout disabled.' : `Set to ${val} min ✓`, 'green');
+        } else {
+          showNotice('Error: ' + (data.error || 'unknown'), 'red');
+        }
+      } catch (e) {
+        showNotice('Request failed.', 'red');
+      } finally {
+        setBtn.disabled = false;
+        setBtn.textContent = 'Set';
+      }
+    }
+
+    function showNotice(msg, color) {
+      setNotice.textContent = msg;
+      setNotice.className = `text-xs text-center mt-1.5 min-h-[1rem] slide-down
+                             ${color === 'green' ? 'text-green-400' : 'text-red-400'}`;
+      setTimeout(() => { setNotice.textContent = ''; }, 3500);
+    }
+
+    setBtn.addEventListener('click', setUptime);
+    uptimeInput.addEventListener('keydown', e => { if (e.key === 'Enter') setUptime(); });
+  </script>
 
 </body>
-
 </html>
