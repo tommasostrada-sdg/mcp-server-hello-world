@@ -88,7 +88,7 @@ async def api_set_uptime(payload: UptimePayload):
     Update MAX_UPTIME_MIN at runtime and persist the change to app.yaml.
     Also resets the inactivity timer.
     """
-    minutes = max(0, payload.minutes)
+    minutes = max(1, payload.minutes)
 
     # ── Update in-memory state ────────────────────────────────────────────────
     try:
