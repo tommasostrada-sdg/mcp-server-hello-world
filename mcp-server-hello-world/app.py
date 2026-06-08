@@ -182,6 +182,11 @@ async def api_set_uptime(payload: UptimePayload):
 
 
 # ── Mount MCP at /mcp ─────────────────────────────────────────────────────────
-# Use Starlette Mount so the sub-app's routes are never merged into the
-# FastAPI router (which caused the on_startup kwarg crash).
-app.mount("/mcp", _mcp_asgi)
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    async with _mcp_asgi.lifespan(app):
+        yield
+
+_api = FastAPI(title="MCP Server UI", lifespan=lifespan)
