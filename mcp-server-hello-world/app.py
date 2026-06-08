@@ -11,10 +11,6 @@ MAX_UPTIME_SECONDS = int(os.getenv("MAX_UPTIME_MIN", "0")) * 60
 
 print("[DEBUG] APP_NAME:", os.getenv("APP_NAME"))
 print("[DEBUG] ALL ENV KEYS:", list(os.environ.keys()))
-
-APP_NAME = "mcp-server-ai-dev-kit"
-MAX_UPTIME_SECONDS = 0 * 60
-
 print(f"[DEBUG] Uptime set: {MAX_UPTIME_SECONDS}s")
 
 _start_time = time.monotonic()
