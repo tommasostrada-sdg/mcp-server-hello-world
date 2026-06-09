@@ -1,8 +1,6 @@
-# Databricks Apps configuration
-# Deploy with: databricks apps deploy --source-code-path . <app-name>
-
-command: ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2",
-          "--timeout", "120", "--keep-alive", "5", "app:app"]
+# Databricks Apps manifest
+# gunicorn auto-reads gunicorn.conf.py from the working directory
+command: ["gunicorn", "app:app"]
 
 env:
   - name: PYTHONUNBUFFERED

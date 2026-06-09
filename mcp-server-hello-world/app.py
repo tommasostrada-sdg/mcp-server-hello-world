@@ -16,13 +16,15 @@ from flask import Flask, jsonify, render_template, request, Response, stream_wit
 from flask_cors import CORS
 
 # ── Logging ──────────────────────────────────────────────────────────────────
-LOG_FILE = Path("mcp_server.log")
+# /tmp is the only guaranteed writable dir inside the Databricks Apps sandbox.
+# The app source directory is read-only at runtime.
+LOG_FILE = Path("/tmp/mcp_server.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE),
-        logging.StreamHandler(),
+        logging.StreamHandler(),   # stdout is captured by Databricks Apps log viewer
     ],
 )
 logger = logging.getLogger(__name__)
@@ -607,5 +609,7 @@ def health():
 
 
 if __name__ == "__main__":
-    logger.info("STARTUP: Databricks AI Dev Kit MCP Server")
-    app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)
+    # Databricks Apps injects $PORT; fall back to 8080 for local dev
+    port = int(os.environ.get("PORT", 8080))
+    logger.info("STARTUP: Databricks AI Dev Kit MCP Server on port %d", port)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
