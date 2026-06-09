@@ -1,92 +1,174 @@
-# Databricks MCP Server App
+# Databricks AI Dev Kit — Custom MCP Server
 
-Host the [AI Dev Kit](https://github.com/databricks-solutions/ai-dev-kit) MCP server as a Databricks App — letting you experience 80+ Databricks tools from the AI Playground, no local setup required.
+A production-ready MCP (Model Context Protocol) server deployed as a **Databricks App**, exposing Genie and AI Dev Kit tools for improving code quality, pipeline generation, and workspace management.
 
-## What This Is
-
-A **3-file wrapper** that takes the open-source `databricks-mcp-server` from the [Databricks Solutions](https://github.com/databricks-solutions) team (stdio transport) and deploys it as a Databricks App with Streamable HTTP transport. The Playground auto-discovers all tools.
-
-The app now also monitors inbound activity and will shut itself down after x minutes of inactivity.
-
-```
-app.py            # 4 lines — import server, expose as HTTP
-app.yaml          # Databricks App config
-requirements.txt  # Pull ai-dev-kit from GitHub
-databricks.yml    # Databricks Asset Bundle config
-```
-
-## Setup
-
-### Prerequisites
-- Databricks CLI v0.229.0+ (`databricks --version`)
-- A Databricks workspace with Apps enabled
-- Authenticated CLI profile (`databricks auth login --host <url>`)
-
-### Deploy
-
-This project uses [Databricks Asset Bundles](https://docs.databricks.com/dev-tools/bundles/index.html) for deployment.
-
-```bash
-# Authenticate
-databricks auth login --host https://your-workspace.cloud.databricks.com
-
-# Validate the bundle
-databricks bundle validate
-
-# Deploy the app resource and sync source code
-databricks bundle deploy
-
-# Start the app (installs packages and launches the server)
-databricks bundle run mcp_ai_dev_kit
-
-# If using a named CLI profile, add --profile to each command:
-databricks bundle deploy --profile <profile-name>
-databricks bundle run mcp_ai_dev_kit --profile <profile-name>
-```
-
-> **Important:** The app name must start with `mcp-` for the Playground to discover it as a custom MCP server. The default name `mcp-ai-dev-kit` already handles this.
-
-### Connect to AI Playground
-
-1. Open your workspace → **AI Playground**
-2. Select a model with the **Tools enabled** label
-3. Click **Tools** → **Add tool** → **MCP Servers**
-4. Add your app's MCP endpoint: `https://<app-url>/mcp`
-5. The Playground auto-discovers all 80+ tools
-
-## Demo Script: Usage Dashboard in 3 Prompts
-
-Once connected in the Playground:
-
-1. **"Query system.billing.usage and show me total DBUs by sku_name for the last 30 days"**
-   → Uses SQL tools
-
-2. **"Create a view called main.default.monthly_usage_summary that aggregates DBUs from system.billing.usage by month and sku_name"**
-   → Uses SQL tools
-
-3. **"Build a clean AI/BI dashboard that shows weekly and monthly usage trends from that view — a line chart for weekly DBUs over time and a bar chart for monthly DBUs by SKU"**
-   → Uses Dashboard tools
-
-Switch to the workspace UI — a published Lakeview dashboard, built from conversation.
+---
 
 ## Architecture
 
 ```
-AI Playground ──Streamable HTTP──▶ Databricks App (this repo)
-                                        │
-                                        ▼
-                                  ai-dev-kit MCP Server
-                                  (80+ tools via FastMCP)
-                                        │
-                                        ▼
-                              Databricks APIs (SDK)
-                              ├── SQL Warehouses
-                              ├── Unity Catalog
-                              ├── Jobs / Pipelines
-                              ├── Vector Search
-                              ├── Model Serving
-                              ├── Agent Bricks
-                              ├── AI/BI Dashboards
-                              ├── Genie
-                              └── ...
+┌─────────────────────────────────────────────────────┐
+│                Databricks App (port 8080)            │
+│                                                      │
+│  ┌──────────────┐   ┌─────────────────────────────┐ │
+│  │  Dashboard   │   │    MCP Server (Flask)        │ │
+│  │  (React SPA) │   │                              │ │
+│  │  • Timer     │   │  POST /mcp  (JSON-RPC 2.0)  │ │
+│  │  • Tool UI   │   │  POST /api/invoke  (REST)   │ │
+│  │  • Live logs │   │  GET  /api/status            │ │
+│  │  • SSE feed  │   │  GET  /api/stream  (SSE)    │ │
+│  └──────────────┘   └─────────────────────────────┘ │
+└─────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Tools Included
+
+### 🔮 Genie (SQL & Notebook Intelligence)
+| Tool | Description |
+|------|-------------|
+| `genie_query_explain` | Explain + optimise SQL/PySpark queries |
+| `genie_schema_advisor` | Delta table schema + partitioning advice |
+| `genie_notebook_review` | Notebook code quality & secret leak scan |
+
+### ⚙️ AI Dev Kit (Code Generation)
+| Tool | Description |
+|------|-------------|
+| `aidevkit_generate_pipeline` | Generate DLT (Delta Live Tables) pipeline |
+| `aidevkit_mlflow_scaffold` | Scaffold MLflow experiment + serving config |
+| `aidevkit_dbt_gen` | Generate dbt model SQL + schema.yml |
+| `aidevkit_secret_scanner` | Scan code for leaked secrets/PATs |
+
+### 🌐 Space (Workspace Helpers)
+| Tool | Description |
+|------|-------------|
+| `space_activity_check` | Read server logs, show time until shutdown |
+| `space_keep_alive` | Reset the idle timer from a notebook |
+
+### 🧪 Test
+| Tool | Description |
+|------|-------------|
+| `test_echo` | Verify MCP server is reachable and working |
+
+---
+
+## Quick Start
+
+### 1. Local dev
+
+```bash
+pip install -r requirements.txt
+python app.py
+# Open http://localhost:8080
+```
+
+### 2. Run tests
+
+```bash
+pip install pytest
+pytest tests/test_mcp_server.py -v
+```
+
+### 3. Deploy to Databricks Apps
+
+```bash
+# Install CLI
+pip install databricks-cli
+
+# Authenticate
+databricks configure --token
+
+# Deploy
+databricks apps deploy --source-code-path . my-mcp-server
+
+# Check status
+databricks apps get my-mcp-server
+```
+
+---
+
+## MCP Protocol Usage
+
+### Initialize
+
+```json
+POST /mcp
+{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "initialize",
+  "params": { "clientInfo": { "name": "my-client" } }
+}
+```
+
+### List tools
+
+```json
+{ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }
+```
+
+### Call a tool
+
+```json
+{
+  "jsonrpc": "2.0", "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "genie_query_explain",
+    "arguments": {
+      "query": "SELECT * FROM orders WHERE year = 2024",
+      "dialect": "sql",
+      "focus": "optimise"
+    }
+  }
+}
+```
+
+---
+
+## Keeping the App Alive
+
+Databricks Apps shut down after **30 minutes of inactivity**. To prevent this from a notebook:
+
+```python
+import requests, time
+
+MCP_URL = "https://<your-app>.databricksapps.com"
+
+def keep_alive():
+    requests.post(f"{MCP_URL}/api/keepalive")
+
+# Call every 20 minutes in your notebook
+while True:
+    keep_alive()
+    time.sleep(20 * 60)
+```
+
+Or use the MCP tool directly:
+
+```python
+requests.post(f"{MCP_URL}/mcp", json={
+    "jsonrpc": "2.0", "id": 1,
+    "method": "tools/call",
+    "params": { "name": "space_keep_alive", "arguments": {} }
+})
+```
+
+---
+
+## Activity Monitoring
+
+The server writes structured logs to `mcp_server.log`. The dashboard polls these via SSE every 5 seconds and displays:
+
+- **Ring timer** showing minutes until shutdown
+- **Color coding**: green (>10 min) → yellow (<10 min) → red/pulsing (<5 min)  
+- **Live log tail** with ACTIVITY events highlighted in green
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IDLE_TIMEOUT_MINUTES` | `30` | Match your Databricks Apps idle timeout |
+| `PORT` | `8080` | Server port (set by Databricks Apps) |

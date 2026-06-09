@@ -1,3 +1,5 @@
 databricks-tools-core @ git+https://github.com/databricks-solutions/ai-dev-kit.git#subdirectory=databricks-tools-core
 databricks-mcp-server @ git+https://github.com/databricks-solutions/ai-dev-kit.git#subdirectory=databricks-mcp-server
-uvicorn[standard]>=0.30.0
+flask>=3.0.0
+flask-cors>=4.0.0
+gunicorn>=21.2.0
