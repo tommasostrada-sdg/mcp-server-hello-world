@@ -6,4 +6,4 @@ env:
   - name: PYTHONUNBUFFERED
     value: "1"
   - name: IDLE_TIMEOUT_MINUTES
-    value: "30"
+    value: "3"
