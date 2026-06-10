@@ -33,7 +33,7 @@ app = Flask(__name__)
 CORS(app)
 
 
-IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "0")) * 60
+IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "0"))
 
 print(f"[DEBUG] Uptime set: {IDLE_TIMEOUT_MINUTES}s")
 # ── State ─────────────────────────────────────────────────────────────────────
