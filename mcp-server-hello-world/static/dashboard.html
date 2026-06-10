@@ -328,6 +328,48 @@
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
 
+  /* ── Config panel ──────────────────────────────────────────────────── */
+  .config-section {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .config-title {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.7px;
+    text-transform: uppercase; color: var(--text-muted);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .config-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .config-key {
+    font-size: 11px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .config-val {
+    font-family: var(--font-mono);
+    font-size: 12px; font-weight: 700; color: var(--accent2);
+  }
+  .config-source {
+    font-size: 9px; color: var(--text-muted);
+    padding: 2px 6px; border-radius: 3px;
+    background: rgba(0,210,255,0.08);
+    border: 1px solid rgba(0,210,255,0.15);
+    letter-spacing: 0.3px;
+  }
+  .config-warn {
+    font-size: 10px; color: var(--yellow);
+    padding: 6px 10px;
+    background: rgba(250,204,21,0.07);
+    border: 1px solid rgba(250,204,21,0.2);
+    border-radius: var(--radius);
+    display: none;
+  }
+
   /* ── Copy button ───────────────────────────────────────────────────── */
   .btn-copy {
     background: transparent; border: 1px solid var(--border);
@@ -416,10 +458,41 @@
           <div class="ring-unit">MIN LEFT</div>
         </div>
       </div>
-      <div class="ring-sub">Until Databricks idle shutdown<br>
-        <span style="color:var(--text-muted);font-size:10px;">(30 min default)</span>
+      <div class="ring-sub" id="ringSubText">Until Databricks idle shutdown</div>
+    </div>
+
+    <!-- Shutdown configuration -->
+    <div class="config-section">
+      <div class="config-title">⚙️ Shutdown Config</div>
+
+      <div class="config-row">
+        <span class="config-key">
+          <span>Idle timeout</span>
+          <span class="config-source" id="cfgSource">env</span>
+        </span>
+        <span class="config-val"><span id="cfgTimeout">—</span> min</span>
+      </div>
+
+      <div class="config-row">
+        <span class="config-key">Last activity</span>
+        <span class="config-val" id="cfgLastActivity" style="font-size:10px;">—</span>
+      </div>
+
+      <div class="config-row">
+        <span class="config-key">Shutdown at</span>
+        <span class="config-val" id="cfgShutdownAt" style="font-size:10px;">—</span>
+      </div>
+
+      <div class="config-row">
+        <span class="config-key">Status</span>
+        <span class="config-val" id="cfgStatus" style="color:var(--green);">Active</span>
+      </div>
+
+      <div class="config-warn" id="cfgWarn">
+        ⚠️ Less than 5 min left — click Keep Alive!
       </div>
     </div>
+
     <div class="panel-body" id="logLines"></div>
   </div>
 
@@ -430,7 +503,8 @@
 let tools = {};
 let selectedTool = null;
 let currentTab = 'invoke';
-const IDLE_TIMEOUT = 30;
+let IDLE_TIMEOUT = 30;           // updated dynamically from /api/status
+let _lastActivityTs = Date.now();  // local estimate, corrected by server
 const CIRCUMFERENCE = 2 * Math.PI * 42; // ≈ 263.89
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -614,36 +688,68 @@ function buildExampleArgs(tool) {
   return args;
 }
 
+// ── Safe fetch: handles non-JSON upstream errors from Databricks proxy ──────
+async function safeFetch(url, options = {}, timeoutMs = 25000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { ...options, signal: ctrl.signal });
+    clearTimeout(timer);
+    const raw = await r.text();                  // always read as text first
+    const ct  = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      // Databricks proxy returned HTML/text error page
+      const preview = raw.slice(0, 120).replace(/\n/g, ' ').trim();
+      return { ok: false, data: {
+        error: `Server returned non-JSON response (HTTP ${r.status})`,
+        detail: preview,
+        hint: r.status === 502 || r.status === 503
+          ? 'App may be restarting — wait a few seconds and try again'
+          : r.status === 504
+          ? 'Gateway timeout — the request took too long'
+          : 'Check the Databricks Apps Logs tab for details'
+      }};
+    }
+    try {
+      return { ok: r.ok, data: JSON.parse(raw) };
+    } catch {
+      return { ok: false, data: {
+        error: 'Response is not valid JSON',
+        raw: raw.slice(0, 200)
+      }};
+    }
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') {
+      return { ok: false, data: {
+        error: 'Request timed out after ' + (timeoutMs/1000) + 's',
+        hint: 'The tool may still be running server-side. Check activity logs.'
+      }};
+    }
+    return { ok: false, data: { error: e.message || String(e) } };
+  }
+}
+
 async function invokeRest() {
   const args = gatherArgs();
   showLoading();
-  try {
-    const r = await fetch('/api/invoke', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({tool: selectedTool, args})
-    });
-    const data = await r.json();
-    showResult(data.result || data, r.ok);
-  } catch(e) {
-    showResult({error: String(e)}, false);
-  }
+  const { ok, data } = await safeFetch('/api/invoke', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({tool: selectedTool, args})
+  });
+  showResult(ok ? (data.result || data) : data, ok);
 }
 
 async function runMcpRaw() {
   const args = buildExampleArgs(tools[selectedTool]);
   showLoading();
-  try {
-    const r = await fetch('/mcp', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:selectedTool,arguments:args}})
-    });
-    const data = await r.json();
-    showResult(data, r.ok);
-  } catch(e) {
-    showResult({error: String(e)}, false);
-  }
+  const { ok, data } = await safeFetch('/mcp', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:selectedTool,arguments:args}})
+  });
+  showResult(data, ok);
 }
 
 function showLoading() {
@@ -708,12 +814,64 @@ function startStatusPolling() {
     try {
       const r = await fetch('/api/status');
       const d = await r.json();
+
+      // Update dynamic IDLE_TIMEOUT from server
+      if (d.idle_timeout_minutes) IDLE_TIMEOUT = d.idle_timeout_minutes;
+
       updateTimer(d.minutes_until_shutdown);
       document.getElementById('serverTime').textContent = new Date(d.server_time_utc).toLocaleTimeString();
+      updateConfigPanel(d);
     } catch {}
   };
   poll();
   setInterval(poll, 10000);
+}
+
+function updateConfigPanel(d) {
+  const timeout    = d.idle_timeout_minutes ?? IDLE_TIMEOUT;
+  const minsLeft   = d.minutes_until_shutdown ?? 0;
+  const serverNow  = d.server_time_utc ? new Date(d.server_time_utc) : new Date();
+
+  // Timeout value + source badge
+  const cfgTimeout = document.getElementById('cfgTimeout');
+  if (cfgTimeout) cfgTimeout.textContent = timeout;
+
+  // Source: env var or Databricks Apps default
+  const cfgSource = document.getElementById('cfgSource');
+  if (cfgSource) {
+    cfgSource.textContent = d.config_source ?? 'env';
+    cfgSource.title = d.config_source === 'env'
+      ? 'Set via IDLE_TIMEOUT_MINUTES environment variable'
+      : 'Databricks Apps platform default';
+  }
+
+  // Last activity = serverNow - minsLeft reversed = serverNow - (timeout - minsLeft)
+  const elapsedMs  = (timeout - minsLeft) * 60 * 1000;
+  const lastActTs  = new Date(serverNow.getTime() - elapsedMs);
+  const cfgLast    = document.getElementById('cfgLastActivity');
+  if (cfgLast) cfgLast.textContent = lastActTs.toLocaleTimeString();
+
+  // Shutdown at = serverNow + minsLeft
+  const shutdownTs = new Date(serverNow.getTime() + minsLeft * 60 * 1000);
+  const cfgShut    = document.getElementById('cfgShutdownAt');
+  if (cfgShut) cfgShut.textContent = shutdownTs.toLocaleTimeString();
+
+  // Status badge
+  const cfgStatus  = document.getElementById('cfgStatus');
+  if (cfgStatus) {
+    if (minsLeft < 2)       { cfgStatus.textContent = 'Shutting down…'; cfgStatus.style.color = 'var(--red)'; }
+    else if (minsLeft < 5)  { cfgStatus.textContent = 'Critical';        cfgStatus.style.color = 'var(--red)'; }
+    else if (minsLeft < 10) { cfgStatus.textContent = 'Warning';         cfgStatus.style.color = 'var(--yellow)'; }
+    else                    { cfgStatus.textContent = 'Active';           cfgStatus.style.color = 'var(--green)'; }
+  }
+
+  // Ring sub-text with real timeout
+  const ringSubText = document.getElementById('ringSubText');
+  if (ringSubText) ringSubText.textContent = `Until idle shutdown (${timeout} min timeout)`;
+
+  // Warning banner
+  const cfgWarn = document.getElementById('cfgWarn');
+  if (cfgWarn) cfgWarn.style.display = minsLeft < 5 ? 'block' : 'none';
 }
 
 // ── SSE stream ────────────────────────────────────────────────────────────────

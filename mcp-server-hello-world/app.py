@@ -527,9 +527,12 @@ def mcp_handler():
 @app.route("/api/status")
 def api_status():
     touch_activity("status-poll")
+    # config_source tells the UI where the timeout value came from
+    cfg_source = "env" if "IDLE_TIMEOUT_MINUTES" in os.environ else "default"
     return jsonify({
         "minutes_until_shutdown": minutes_until_shutdown(),
         "idle_timeout_minutes": IDLE_TIMEOUT_MINUTES,
+        "config_source": cfg_source,
         "tool_count": len(TOOLS),
         "categories": sorted({t["category"] for t in TOOLS.values()}),
         "server_time_utc": datetime.now(timezone.utc).isoformat(),
@@ -556,17 +559,26 @@ def api_logs():
 def api_invoke():
     """Convenience REST wrapper for tool invocation (non-MCP clients)."""
     touch_activity("api-invoke")
-    data = request.get_json(force=True)
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON body"}), 400
     tool_name = data.get("tool")
     args = data.get("args", {})
     if tool_name not in TOOLS:
-        return jsonify({"error": f"Unknown tool: {tool_name}"}), 404
+        return jsonify({"error": f"Unknown tool: {tool_name}",
+                        "available": list(TOOLS.keys())}), 404
     try:
         result = EXECUTORS[tool_name](args)
-        return jsonify({"tool": tool_name, "result": result})
+        logger.info("API_INVOKE_OK:%s", tool_name)
+        # Always return JSON with explicit content-type so proxies don't mangle it
+        response = jsonify({"tool": tool_name, "result": result})
+        response.headers["Content-Type"] = "application/json"
+        return response
     except Exception as exc:
         logger.error("API_INVOKE_ERROR:%s %s", tool_name, exc)
-        return jsonify({"error": str(exc)}), 500
+        response = jsonify({"error": str(exc), "tool": tool_name})
+        response.headers["Content-Type"] = "application/json"
+        return response, 500
 
 
 @app.route("/api/keepalive", methods=["POST"])
