@@ -12,7 +12,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, Response, stream_with_context
+from flask import Flask, jsonify, request, Response, stream_with_context, send_from_directory, send_from_directory
 from flask_cors import CORS
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -596,11 +596,14 @@ def api_stream():
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
+# Databricks Apps mounts source at /app/python/source_code/
+# Use __file__ so the path is always correct regardless of working directory.
+STATIC_DIR = Path(__file__).parent / "static"
 
 @app.route("/")
 def dashboard():
     touch_activity("dashboard-load")
-    return render_template("dashboard.html")
+    return send_from_directory(str(STATIC_DIR), "dashboard.html")
 
 
 @app.route("/health")
